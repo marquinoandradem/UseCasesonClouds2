@@ -1,58 +1,64 @@
-- name: create Azure VM
+# Description
+# ===========
+# This playbook create an Azure VM with public IP, and open 22 port for SSH
+
+- name: Create Azure VM
   hosts: localhost
   connection: local
-  vars_files: 
-#    - /home/ansible/secvar/azure_cred.yml
-   - extravars/ssh_keys.yml
-
-  tasks: 
-  - name: create resource groups
+  vars:
+    resource_group: "{{ resource_group_name }}"
+    vm_name: testvm
+    location: eastus
+  tasks:
+  - name: Create a resource group
     azure_rm_resourcegroup:
-      name: resourcegroup_namem
-      location: westeurope
-      tags:
-        testing: testing
-
-  - name: Create a virtual network
+      name: "{{ resource_group }}"
+      location: "{{ location }}"
+  - name: Create virtual network
     azure_rm_virtualnetwork:
-      name: firstnetwork
-      resource_group: resourcegroup_namem
-      address_prefixes_cidr:
-          - "10.1.0.0/16"
-          - "172.100.0.0/16"
-      dns_servers:
-          - "127.0.0.1"
-          - "127.0.0.2"
-      tags:
-          testing: testing
-          delete: on-exit
-
-  - name: Create a subnet
+      resource_group: "{{ resource_group }}"
+      name: "{{ vm_name }}"
+      address_prefixes: "10.0.0.0/16"
+  - name: Add subnet
     azure_rm_subnet:
-      name: firstsubnet
-      virtual_network_name: firstnetwork
-      resource_group: resourcegroup_namem
-      address_prefix_cidr: "10.1.0.0/24"
-      state: present
-  
-  - name: setup first jumphost
+      resource_group: "{{ resource_group }}"
+      name: "{{ vm_name }}"
+      address_prefix: "10.0.1.0/24"
+      virtual_network: "{{ vm_name }}"
+  - name: Create public IP address
+    azure_rm_publicipaddress:
+      resource_group: "{{ resource_group }}"
+      allocation_method: Static
+      name: "{{ vm_name }}"
+  - name: Create Network Security Group that allows SSH
+    azure_rm_securitygroup:
+      resource_group: "{{ resource_group }}"
+      name: "{{ vm_name }}"
+      rules:
+        - name: SSH
+          protocol: Tcp
+          destination_port_range: 22
+          access: Allow
+          priority: 1001
+          direction: Inbound
+  - name: Create virtual network inteface card
+    azure_rm_networkinterface:
+      resource_group: "{{ resource_group }}"
+      name: "{{ vm_name }}"
+      virtual_network: "{{ vm_name }}"
+      subnet: "{{ vm_name }}"
+      public_ip_name: "{{ vm_name }}"
+      security_group: "{{ vm_name }}"
+  - name: Create VM
     azure_rm_virtualmachine:
-      resource_group: resourcegroup_namem
-      name: jumphost
-      vm_size: Standard_A2
-      admin_username: ansible
-      ssh_password_enabled: false
-      ssh_public_keys: 
-      - path: /home/ansible/.ssh/authorized_keys
-        key_data: "{{ automata_ansible_sshkey }}"
-      - path: /home/ansible/.ssh/authorized_keys
-        key_data: "{{ automata_kvegh_sshkey }}"
+      resource_group: "{{ resource_group }}"
+      name: "{{ vm_name }}"
+      vm_size: Standard_DS1_v2
+      admin_username: azureuser
+      admin_password: Password@123
+      network_interfaces: "{{ vm_name }}"
       image:
-        publisher: RedHat
-        offer: rhel-byos
-        sku: rhel-lvm8
+        offer: UbuntuServer
+        publisher: Canonical
+        sku: 16.04-LTS
         version: latest
-      plan:
-        product: rhel-byos
-        publisher: redhat
-        name: rhel-lvm8
